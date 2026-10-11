@@ -1,4 +1,4 @@
-# portscan-banner
+# rust_port_scanner
 
 A minimal TCP connect scanner with banner grabbing, written in Rust. It sweeps a CIDR range, checks the well-known ports (0-1023) on every host, and prints a service banner for each open port.
 
