@@ -1,0 +1,10 @@
+[package]
+name = "Rust_PScanner"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+pnet = "0.35" # For low-level packet construction (SYN)
+anyhow = "1.0"
+ipnet = "2.12.2"
