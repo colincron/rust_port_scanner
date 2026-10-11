@@ -1,0 +1,83 @@
+# portscan-banner
+
+A minimal TCP connect scanner with banner grabbing, written in Rust. It sweeps a CIDR range, checks the well-known ports (0-1023) on every host, and prints a service banner for each open port.
+
+## How it works
+
+1. Enumerates every host address in an IPv4 CIDR block using the [`ipnet`](https://crates.io/crates/ipnet) crate.
+2. For each host, attempts a full TCP connect on ports 0-1023 with a 200 ms timeout.
+3. On an open port, grabs a banner:
+   - Reads immediately for up to 3 seconds. This catches protocols that speak first (SSH, FTP, SMTP, etc.).
+   - If nothing arrives, sends `HEAD / HTTP/1.0\r\n\r\n` and reads the response. This catches HTTP-style services that wait for the client.
+   - If the connection closes with no data, reports the error.
+
+## Requirements
+
+- Rust 1.88 or newer. The code uses `if let` chains, which require the 2024 edition.
+- `Cargo.toml`:
+
+```toml
+[package]
+name = "portscan-banner"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ipnet = "2"
+```
+
+## Build and run
+
+```bash
+cargo build --release
+./target/release/portscan-banner
+```
+
+## Example output
+
+```
+192.168.8.1:22 is OPEN
+
+Banner from 192.168.8.1:22:
+SSH-2.0-OpenSSH_9.6
+
+192.168.8.1:80 is OPEN
+
+Banner from 192.168.8.1:80:
+HTTP/1.0 200 OK
+Server: nginx
+...
+```
+
+Closed and filtered ports print nothing.
+
+## Configuration
+
+Settings are hardcoded in `main()`. Edit and recompile.
+
+| Setting | Location | Default |
+|---|---|---|
+| Target network | `net` in `main()` | `192.168.8.0/24` |
+| Port range | `ports_list` in `main()` | `0..1024` |
+| Connect timeout | `timeout` in `main()` | 200 ms |
+| Banner read/write timeout | `grab_banner()` | 3 s |
+
+## Limitations
+
+- **Sequential.** Hosts and ports are scanned one at a time. A /24 with mostly filtered (silently dropping) hosts can take on the order of 14 hours in the worst case (254 hosts × 1024 ports × 200 ms). Refused connections return quickly, so LAN scans are usually much faster.
+- **IPv4 only**, TCP only, no UDP.
+- **Full connect scan**, not SYN. It is noisy and will show up in target logs.
+- **Banner is raw.** Output is lossy UTF-8 of the first 1024 bytes. There is no service fingerprinting or TLS handling, so HTTPS ports will usually return garbage or nothing.
+- **Hardcoded config**, no CLI arguments.
+- Port 0 is included in the range but cannot accept connections, so it is wasted work.
+
+## Possible improvements
+
+- CLI arguments (target, ports, timeout) via `clap`
+- Concurrency with `rayon`, `tokio`, or a thread pool
+- Optional output to JSON or CSV
+- TLS banner grabbing
+
+## Legal
+
+Only scan networks you own or have explicit written authorization to test. Unauthorized scanning may violate computer misuse laws.
