@@ -73,7 +73,6 @@ Settings are hardcoded in `main()`. Edit and recompile.
 
 ## Possible improvements
 
-- CLI arguments (target, ports, timeout) via `clap`
 - Concurrency with `rayon`, `tokio`, or a thread pool
 - Optional output to JSON or CSV
 - TLS banner grabbing
