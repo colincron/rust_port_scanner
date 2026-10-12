@@ -1,11 +1,33 @@
 extern crate ipnet;
 
-use ipnet::Ipv4Net;
+use clap::Parser;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::net::{SocketAddr, TcpStream};
 use std::ops::Range;
 use std::time::Duration;
+
+fn parse_port_range(s: &str) -> Result<Range<u16>, String> {
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() != 2 {
+        return Err("Range must be in the format 'start-end' (e.g., 80-90)".to_string());
+    }
+    let start = parts[0].parse::<u16>().map_err(|e| e.to_string())?;
+    let end = parts[1].parse::<u16>().map_err(|e| e.to_string())?;
+    Ok(start..end)
+}
+
+fn parse_ip_range(s: &str) -> Result<Range<Ipv4Addr>, String> {
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() != 2 {
+        return Err(
+            "Range must be in the format 'start-end' (e.g., 192.168.1.1-192.168.1.255)".to_string(),
+        );
+    }
+    let start = parts[0].parse::<Ipv4Addr>().map_err(|e| e.to_string())?;
+    let end = parts[1].parse::<Ipv4Addr>().map_err(|e| e.to_string())?;
+    Ok(start..end)
+}
 
 fn grab_banner(ip: Ipv4Addr, port: u16) -> Result<String, std::io::Error> {
     // 1. Parse the IP and Port into a SocketAddr
@@ -13,8 +35,7 @@ fn grab_banner(ip: Ipv4Addr, port: u16) -> Result<String, std::io::Error> {
 
     // 2. Connect with a strict timeout (e.g., 3 seconds)
     let timeout = Duration::from_secs(3);
-    //let addr_string: String = address.to_string();
-    //let socket_addr: SocketAddr = addr_string.parse().expect("Invalid address format.");
+
     let mut stream = TcpStream::connect_timeout(&socket_addr, timeout)?;
 
     // 3. Set read/write timeouts so the function doesn't hang indefinitely
@@ -50,20 +71,37 @@ fn is_port_open(ip: Ipv4Addr, port: u16, timeout: Duration) -> bool {
     TcpStream::connect_timeout(&addr.into(), timeout).is_ok()
 }
 
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    // #[arg(short, long)]
+    // ip_addr: IpAddr,
+    #[arg(short, long, value_parser = parse_ip_range)]
+    ip_range: Range<Ipv4Addr>,
+
+    // port: u16,
+    #[arg(short, long, value_parser = parse_port_range)]
+    port_range: Range<u16>,
+}
 fn main() {
-    //let target = Ipv4Addr::new(127, 0, 0, 1);
-    let net: Ipv4Net = "192.168.8.0/24".parse().unwrap();
+    let args = Args::parse();
+
+    let Args {
+        //ip_addr,
+        ip_range,
+        //port,
+        port_range,
+    } = args;
+
+    //let net: Ipv4Net = "192.168.8.0/24".parse().unwrap();
     let timeout = Duration::from_millis(200);
-    // let ports_list: Range<u16> = Range {
-    //     start: 0,
-    //     end: 1024,
-    // };
-    for ip in net.hosts() {
-        let ports_list: Range<u16> = Range {
-            start: 0,
-            end: 1024,
-        };
-        for port in ports_list {
+
+    for ip in ip_range {
+        // let ports_list: Range<u16> = Range {
+        //     start: 0,
+        //     end: 1024,
+        // };
+        for port in port_range.clone() {
             if is_port_open(ip, port, timeout) {
                 println!("\n{}:{} is OPEN", ip, port);
                 match grab_banner(ip, port) {
@@ -72,7 +110,6 @@ fn main() {
                 }
             } else {
                 {} // explicitly do nothing, could also delete else block
-                // println!("{}:{} is CLOSED", ip, port);
             }
         }
     }
