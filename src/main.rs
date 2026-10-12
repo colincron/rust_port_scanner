@@ -1,6 +1,6 @@
 extern crate ipnet;
 
-use clap::Parser;
+use clap::{ArgGroup, Parser};
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::net::{SocketAddr, TcpStream};
@@ -70,46 +70,65 @@ fn is_port_open(ip: Ipv4Addr, port: u16, timeout: Duration) -> bool {
     let addr = SocketAddrV4::new(ip, port);
     TcpStream::connect_timeout(&addr.into(), timeout).is_ok()
 }
-
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
+// Ensure the user provides exactly one IP option and one Port option
+#[command(group(
+    ArgGroup::new("ip_source")
+        .required(true)
+        .args(["ip_addr", "ip_range"]),
+))]
+#[command(group(
+    ArgGroup::new("port_source")
+        .required(true)
+        .args(["port", "port_range"]),
+))]
 struct Args {
-    // #[arg(short, long)]
-    // ip_addr: IpAddr,
-    #[arg(short, long, value_parser = parse_ip_range)]
-    ip_range: Range<Ipv4Addr>,
+    #[arg(short = 'i', long)]
+    ip_addr: Option<Ipv4Addr>,
 
-    // port: u16,
-    #[arg(short, long, value_parser = parse_port_range)]
-    port_range: Range<u16>,
+    #[arg(short = 'r', long, value_parser = parse_ip_range)]
+    ip_range: Option<Range<Ipv4Addr>>,
+
+    #[arg(short, long)]
+    port: Option<u16>,
+
+    #[arg(short = 'o', long, value_parser = parse_port_range)]
+    port_range: Option<Range<u16>>,
 }
+
 fn main() {
     let args = Args::parse();
 
-    let Args {
-        //ip_addr,
-        ip_range,
-        //port,
-        port_range,
-    } = args;
+    // 1. Resolve IPs into a single Iterator type (or Boxed Iterator)
+    let ips: Box<dyn Iterator<Item = Ipv4Addr>> = if let Some(single_ip) = args.ip_addr {
+        Box::new(std::iter::once(single_ip))
+    } else if let Some(range) = args.ip_range {
+        Box::new(range)
+    } else {
+        unreachable!()
+    };
 
-    //let net: Ipv4Net = "192.168.8.0/24".parse().unwrap();
+    // 2. Resolve Ports into a Vec so you can clone/iterate over it repeatedly
+    let ports: Vec<u16> = if let Some(single_port) = args.port {
+        vec![single_port]
+    } else if let Some(range) = args.port_range {
+        range.collect()
+    } else {
+        unreachable!()
+    };
+
     let timeout = Duration::from_millis(200);
 
-    for ip in ip_range {
-        // let ports_list: Range<u16> = Range {
-        //     start: 0,
-        //     end: 1024,
-        // };
-        for port in port_range.clone() {
+    // 3. Execution loops remain clean and agnostic of how the input was provided
+    for ip in ips {
+        for &port in &ports {
             if is_port_open(ip, port, timeout) {
                 println!("\n{}:{} is OPEN", ip, port);
                 match grab_banner(ip, port) {
                     Ok(banner) => println!("\nBanner from {}:{}:\n{}", ip, port, banner),
                     Err(e) => println!("\nFailed to grab banner from {}:{}\n{}", ip, port, e),
                 }
-            } else {
-                {} // explicitly do nothing, could also delete else block
             }
         }
     }
