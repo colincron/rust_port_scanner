@@ -14,7 +14,7 @@ A minimal TCP connect scanner with banner grabbing, written in Rust. Give it a t
 ## Requirements
 
 - Rust 1.88 or newer (edition 2024; the code uses `if let` chains).
-- Only `clap` (with the `derive` feature) is used by the current code. The other dependencies in `Cargo.toml` are not yet used.
+- `clap` (with the `derive` feature).
 
 ## Build
 

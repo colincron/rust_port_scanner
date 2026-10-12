@@ -1,5 +1,3 @@
-extern crate ipnet;
-
 use clap::{ArgGroup, Parser};
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4};
