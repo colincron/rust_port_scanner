@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "Rust_PScanner"
+name = "Rust_Port_Scanner"
 version = "0.1.0"
 dependencies = [
  "anyhow",
