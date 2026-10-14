@@ -2,20 +2,23 @@ use clap::{ArgGroup, Parser};
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::net::{SocketAddr, TcpStream};
-use std::ops::Range;
+use std::ops::RangeInclusive;
 use std::time::Duration;
 
-fn parse_port_range(s: &str) -> Result<Range<u16>, String> {
+fn parse_millis(s: &str) -> Result<Duration, std::num::ParseIntError> {
+    s.parse::<u64>().map(|m| Duration::from_millis(m))
+}
+fn parse_port_range(s: &str) -> Result<RangeInclusive<u16>, String> {
     let parts: Vec<&str> = s.split('-').collect();
     if parts.len() != 2 {
         return Err("Range must be in the format 'start-end' (e.g., 80-90)".to_string());
     }
     let start = parts[0].parse::<u16>().map_err(|e| e.to_string())?;
     let end = parts[1].parse::<u16>().map_err(|e| e.to_string())?;
-    Ok(start..end)
+    Ok(start..=end)
 }
 
-fn parse_ip_range(s: &str) -> Result<Range<Ipv4Addr>, String> {
+fn parse_ip_range(s: &str) -> Result<RangeInclusive<Ipv4Addr>, String> {
     let parts: Vec<&str> = s.split('-').collect();
     if parts.len() != 2 {
         return Err(
@@ -24,7 +27,7 @@ fn parse_ip_range(s: &str) -> Result<Range<Ipv4Addr>, String> {
     }
     let start = parts[0].parse::<Ipv4Addr>().map_err(|e| e.to_string())?;
     let end = parts[1].parse::<Ipv4Addr>().map_err(|e| e.to_string())?;
-    Ok(start..end)
+    Ok(start..=end)
 }
 
 fn grab_banner(ip: Ipv4Addr, port: u16) -> Result<String, std::io::Error> {
@@ -68,6 +71,7 @@ fn is_port_open(ip: Ipv4Addr, port: u16, timeout: Duration) -> bool {
     let addr = SocketAddrV4::new(ip, port);
     TcpStream::connect_timeout(&addr.into(), timeout).is_ok()
 }
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 // Ensure the user provides exactly one IP option and one Port option
@@ -86,13 +90,22 @@ struct Args {
     ip_addr: Option<Ipv4Addr>,
 
     #[arg(short = 'r', long, value_parser = parse_ip_range)]
-    ip_range: Option<Range<Ipv4Addr>>,
+    ip_range: Option<RangeInclusive<Ipv4Addr>>,
 
-    #[arg(short, long)]
+    #[arg(short = 'p', long)]
     port: Option<u16>,
 
     #[arg(short = 'o', long, value_parser = parse_port_range)]
-    port_range: Option<Range<u16>>,
+    port_range: Option<RangeInclusive<u16>>,
+
+    #[arg(short = 't',
+        long = "timeout",
+        value_name = "MS",
+        default_value = "300",
+        value_parser = parse_millis,
+        help = "Connection timeout in milliseconds"
+    )]
+    timeout: Duration,
 }
 
 fn main() {
@@ -116,7 +129,7 @@ fn main() {
         unreachable!()
     };
 
-    let timeout = Duration::from_millis(200);
+    let timeout = args.timeout;
 
     // 3. Execution loops remain clean and agnostic of how the input was provided
     for ip in ips {
