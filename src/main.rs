@@ -5,6 +5,17 @@ use std::net::{SocketAddr, TcpStream};
 use std::ops::RangeInclusive;
 use std::time::Duration;
 
+fn clean_banner(raw: &[u8]) -> String {
+    // 1. lossy-convert raw to a string (bind it to a variable)
+    let banner_input = String::from_utf8_lossy(raw).to_string();
+    // 2. take the first line
+    let first_line = banner_input.lines().next().unwrap_or("");
+    // 3. escape it
+    let sanitized_banner = first_line.escape_debug().to_string();
+    // 4. return an owned String
+    sanitized_banner
+}
+
 fn parse_millis(s: &str) -> Result<Duration, std::num::ParseIntError> {
     s.parse::<u64>().map(|m| Duration::from_millis(m))
 }
@@ -30,12 +41,9 @@ fn parse_ip_range(s: &str) -> Result<RangeInclusive<Ipv4Addr>, String> {
     Ok(start..=end)
 }
 
-fn grab_banner(ip: Ipv4Addr, port: u16) -> Result<String, std::io::Error> {
+fn grab_banner(ip: Ipv4Addr, port: u16, timeout: Duration) -> Result<String, std::io::Error> {
     // 1. Parse the IP and Port into a SocketAddr
     let socket_addr: SocketAddr = SocketAddrV4::new(ip, port).into();
-
-    // 2. Connect with a strict timeout (e.g., 3 seconds)
-    let timeout = Duration::from_secs(3);
 
     let mut stream = TcpStream::connect_timeout(&socket_addr, timeout)?;
 
@@ -49,7 +57,7 @@ fn grab_banner(ip: Ipv4Addr, port: u16) -> Result<String, std::io::Error> {
     if let Ok(bytes_read) = stream.read(&mut buffer)
         && bytes_read > 0
     {
-        return Ok(String::from_utf8_lossy(&buffer[..bytes_read]).into_owned());
+        return Ok(clean_banner(&buffer[0..bytes_read]));
     }
 
     // 5. Fallback: Send a basic payload if the service waits for client input (like HTTP)
@@ -59,7 +67,7 @@ fn grab_banner(ip: Ipv4Addr, port: u16) -> Result<String, std::io::Error> {
     // 6. Read the response after the payload
     let bytes_read = stream.read(&mut buffer)?;
     if bytes_read > 0 {
-        Ok(String::from_utf8_lossy(&buffer[..bytes_read]).into_owned())
+        Ok(clean_banner(&buffer[..bytes_read]))
     } else {
         Err(std::io::Error::new(
             std::io::ErrorKind::ConnectionAborted,
@@ -136,11 +144,33 @@ fn main() {
         for &port in &ports {
             if is_port_open(ip, port, timeout) {
                 println!("\n{}:{} is OPEN", ip, port);
-                match grab_banner(ip, port) {
+                match grab_banner(ip, port, timeout) {
                     Ok(banner) => println!("\nBanner from {}:{}:\n{}", ip, port, banner),
                     Err(e) => println!("\nFailed to grab banner from {}:{}\n{}", ip, port, e),
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keeps_only_first_line() {
+        let raw = b"SSH-2.0-dropbear\r\n\x00\x00\x01\xff\xfekex-algorithms";
+        assert_eq!(clean_banner(raw), "SSH-2.0-dropbear");
+    }
+
+    #[test]
+    fn escapes_control_chars() {
+        let out = clean_banner(b"\x1b[31mred");
+        assert!(!out.contains('\x1b'));
+    }
+
+    #[test]
+    fn empty_input_is_empty_string() {
+        assert_eq!(clean_banner(b""), "");
     }
 }
